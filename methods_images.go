@@ -6,6 +6,7 @@ import (
 	"image/color"
 )
 
+//Add the three methods under this to become an image
 type Image struct{
 	dim_x int
 	dim_y int
