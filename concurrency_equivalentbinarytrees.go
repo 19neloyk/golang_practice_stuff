@@ -8,7 +8,7 @@ import (
 // Walk walks the tree t sending all values
 // from the tree to the channel ch.
 func Walk(t *tree.Tree, ch chan int){
-	Walk_Helper(t, ch) //Functionality here so that we can close the channel afterwards
+	Walk_Helper(t, ch) //Recursion functionality to Walk_Helper function so that we can close the channel afterwards
 	close(ch)
 }
 
