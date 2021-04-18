@@ -17,48 +17,60 @@ type Fetcher interface {
 func Crawl(url string, depth int, fetcher Fetcher) {
 	// TODO: Fetch URLs in parallel.
 	// TODO: Don't fetch the same URL twice.
-	fetched_urls := make(map[string]bool)
-	fetched_urls [url] = true
-	var mu sync.Mutex
+	// This implementation doesn't do either:
+	pages := make( map[string]bool )
+	pages[url] = false
+	var mu sync.Mutex 
 	printer := make (chan string)
-	go Crawl_Helper (url, depth, fetcher, &fetched_urls, mu, printer)
-	//close(printer)
-	for i := range printer {
+	done := make (chan bool)
+	go CrawlHelper(url, depth, fetcher, &pages, mu, printer, done)
+	go func () {
+		if (<-done) {
+			close(printer)
+		}
+	}()
+	
+	for i:= range printer {
 		fmt.Println(i)
 	}
-	return
+	
 }
 
-func Crawl_Helper(url string, depth int, fetcher Fetcher, fetched_urls *map[string]bool, mu sync.Mutex, printer chan string ){
-	if depth <= 0 {
-		(*fetched_urls)[url] = true
-		return
-	}
-	_, urls, err := fetcher.Fetch(url)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+func CrawlHelper(url string, depth int, fetcher Fetcher, pages *map[string]bool, mu sync.Mutex, printer chan string, done chan bool) {
 	mu.Lock()
-	(*fetched_urls)[url] = true
+	(*pages)[url] = true
 	mu.Unlock()
+	if depth <= 0 {
+		done <- true
+		return
+	}
+	body, urls, err := fetcher.Fetch(url)
+	if err != nil {
+		printer <- err.Error()
+		done <- true
+		return
+	}
+	printer <-fmt.Sprintf("found: %s %q\n", url, body)
+	to_be_searched_count := 0
+	subDone := make (chan bool)
 	for _, u := range urls {
 		mu.Lock()
-		_, ok := (*fetched_urls)[u]
+		_, ok := (*pages)[u]
 		mu.Unlock()
-		//ok = false implies url has not been explored yet
 		if !ok {
+			to_be_searched_count++
 			mu.Lock()
-			(*fetched_urls)[u] = false
+			(*pages)[url] = false
 			mu.Unlock()
-			go Crawl_Helper (u, depth-1, fetcher, fetched_urls, mu, printer)
+			go CrawlHelper(u, depth-1, fetcher, pages, mu, printer, subDone)
 		}
 	}
-	fmt.Println(url)
-	printer <-fmt.Sprintf("found: %s\n", url)
-	return 
+	for i := 0 ; i < to_be_searched_count ; i ++ {
+		<-subDone
+	}
+	done <- true
+	return
 }
-
 
 func main() {
 	Crawl("https://golang.org/", 4, fetcher)
@@ -73,7 +85,7 @@ type fakeResult struct {
 }
 
 func (f fakeFetcher) Fetch(url string) (string, []string, error) {
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(300*time.Millisecond)
 	if res, ok := f[url]; ok {
 		return res.body, res.urls, nil
 	}
